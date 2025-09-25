@@ -1,0 +1,133 @@
+# config.yaml - Envio配置文件
+name: message-bottle-indexer
+description: "Indexer for MessageBottle DApp on Monad"
+
+networks:
+  - id: monad_testnet
+    start_block: 0
+    contracts:
+      - name: MessageBottle
+        address: "0x..." # 合约部署后的地址
+        abi_file_path: "./abis/MessageBottle.json"
+        handler: "./src/EventHandlers.ts"
+        events:
+          - event: "BottleDropped(uint256 indexed,address indexed,uint8,int256,int256)"
+            required_entities:
+              - name: Bottle
+              - name: User
+          - event: "BottleFound(uint256 indexed,address indexed,address indexed,uint256)"
+            required_entities:
+              - name: Bottle  
+              - name: User
+              - name: Find
+          - event: "BottleOpened(uint256 indexed,address indexed)"
+            required_entities:
+              - name: Bottle
+              - name: User
+          - event: "RewardClaimed(address indexed,uint256)"
+            required_entities:
+              - name: User
+              - name: Reward
+
+# 实体定义
+entities:
+  - name: Bottle
+    fields:
+      - field: id
+        type: ID!
+      - field: bottleId
+        type: BigInt!
+      - field: creator
+        type: String!
+      - field: finder
+        type: String
+      - field: bottleType
+        type: String!
+      - field: rarity
+        type: String!
+      - field: contentHash
+        type: String!
+      - field: reward
+        type: BigInt!
+      - field: latitude
+        type: BigInt!
+      - field: longitude
+        type: BigInt!
+      - field: dropTime
+        type: BigInt!
+      - field: openTime
+        type: BigInt!
+      - field: isOpened
+        type: Boolean!
+      - field: isActive
+        type: Boolean!
+      - field: blockNumber
+        type: BigInt!
+      - field: transactionHash
+        type: String!
+
+  - name: User
+    fields:
+      - field: id
+        type: ID!
+      - field: address
+        type: String!
+      - field: bottlesDropped
+        type: BigInt!
+      - field: bottlesFound
+        type: BigInt!
+      - field: totalRewards
+        type: BigInt!
+      - field: experience
+        type: BigInt!
+      - field: level
+        type: BigInt!
+      - field: createdAt
+        type: BigInt!
+      - field: lastActivity
+        type: BigInt!
+
+  - name: Find
+    fields:
+      - field: id
+        type: ID!
+      - field: bottle
+        type: Bottle!
+      - field: finder
+        type: User!
+      - field: findTime
+        type: BigInt!
+      - field: blockNumber
+        type: BigInt!
+      - field: transactionHash
+        type: String!
+
+  - name: Reward
+    fields:
+      - field: id
+        type: ID!
+      - field: user
+        type: User!
+      - field: amount
+        type: BigInt!
+      - field: claimTime
+        type: BigInt!
+      - field: blockNumber
+        type: BigInt!
+      - field: transactionHash
+        type: String!
+
+  - name: GlobalStats
+    fields:
+      - field: id
+        type: ID!
+      - field: totalBottles
+        type: BigInt!
+      - field: totalUsers
+        type: BigInt!
+      - field: totalRewards
+        type: BigInt!
+      - field: activeBottles
+        type: BigInt!
+      - field: lastUpdated
+        type: BigInt!
