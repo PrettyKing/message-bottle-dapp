@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
-import { MessageCircle, Gift, Heart, Clock, MapPin, Star, User, Waves, Loader } from 'lucide-react';
+import React, { useState } from 'react';
+import { MessageCircle, Gift, Heart, Clock, MapPin, User, Waves, Loader } from 'lucide-react';
 import { smartAccountManager } from '../wallet/smartAccount';
 import { useBottleQueries } from '../graphql/queries';
 
@@ -18,6 +18,8 @@ interface WalletState {
   smartAccountAddress: string | null;
   eoaAddress: string | null;
   isDeployed: boolean;
+  chainId?: number;
+  networkName?: string;
 }
 
 const MessageBottleApp = () => {
@@ -34,12 +36,15 @@ const MessageBottleApp = () => {
     isConnected: false,
     smartAccountAddress: null,
     eoaAddress: null,
-    isDeployed: false
+    isDeployed: false,
+    chainId: undefined,
+    networkName: undefined
   });
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bottles, setBottles] = useState([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [bottles, setBottles] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(false);
 
   const { getUserStats, getBottlesInArea } = useBottleQueries();
@@ -50,13 +55,18 @@ const MessageBottleApp = () => {
     setError(null);
 
     try {
-      const result = await smartAccountManager.connectWallet();
-      
+      const result = await smartAccountManager.connect();
+
+      // 获取网络信息
+      const network = await smartAccountManager.getNetwork();
+
       setWalletState({
         isConnected: true,
         smartAccountAddress: result.smartAccountAddress,
         eoaAddress: result.eoaAddress,
-        isDeployed: result.isDeployed
+        isDeployed: result.isDeployed,
+        chainId: Number(network.chainId),
+        networkName: network.chainId === 10143n ? 'Monad Testnet' : network.name
       });
 
       // 获取用户统计数据
@@ -77,8 +87,9 @@ const MessageBottleApp = () => {
         }
       }
 
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect wallet');
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message || 'Failed to connect wallet');
       console.error('Wallet connection error:', err);
     } finally {
       setIsConnecting(false);

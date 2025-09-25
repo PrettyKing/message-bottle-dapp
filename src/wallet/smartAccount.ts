@@ -1,16 +1,16 @@
 // src/wallet/smartAccount.ts - 更新网络配置
 import { DelegationFramework } from '@metamask/delegation-framework';
 import { ethers } from 'ethers';
-import { createWalletClient, createPublicClient, http } from 'viem';
+import { MetaMaskSDK } from '@metamask/sdk';
 
 // 更新的Monad测试网配置
 const MONAD_TESTNET_CONFIG = {
-  id: 41279,
-  name: 'Monad Testnet',
+  chainId: '0x279f', // 10143 in hex (修正)
+  chainName: 'Monad Testnet',
   nativeCurrency: {
-    decimals: 18,
     name: 'Monad',
     symbol: 'MON',
+    decimals: 18,
   },
   rpcUrls: {
     default: {
@@ -77,12 +77,8 @@ export class SmartAccountManager {
     return new ethers.providers.JsonRpcProvider(rpcUrls[0]);
   }
 
-  // 连接钱包并创建智能账户
-  async connectWallet(): Promise<{
-    smartAccountAddress: string;
-    eoaAddress: string;
-    isDeployed: boolean;
-  }> {
+  // 连接MetaMask钱包
+  async connect() {
     try {
       // 连接EOA钱包（MetaMask）
       if (!window.ethereum) {
@@ -109,19 +105,18 @@ export class SmartAccountManager {
         }
       }
 
-      const accounts = await window.ethereum.request({
-        method: 'eth_accounts',
-      });
-      const eoaAddress = accounts[0];
+      // 设置提供者
+      this.provider = new ethers.BrowserProvider(ethereum);
+      this.signer = await this.provider.getSigner();
 
       // 暂时使用EOA地址作为智能账户地址（演示模式）
       const smartAccountAddress = eoaAddress;
       const isDeployed = true;
 
       return {
-        smartAccountAddress,
-        eoaAddress,
-        isDeployed,
+        eoaAddress: accounts[0],
+        smartAccountAddress: accounts[0], // 简化版本，直接使用EOA
+        isDeployed: true,
       };
     } catch (error) {
       console.error('连接钱包失败:', error);
@@ -222,5 +217,11 @@ export class SmartAccountManager {
   }
 }
 
-// 导出单例实例
+// 创建单例实例
 export const smartAccountManager = new SmartAccountManager();
+
+// 导出工具函数
+export const connectWallet = () => smartAccountManager.connect();
+export const disconnectWallet = () => smartAccountManager.disconnect();
+export const getBalance = (address?: string) => smartAccountManager.getBalance(address);
+export const sendTransaction = (tx: ethers.TransactionRequest) => smartAccountManager.sendTransaction(tx);
