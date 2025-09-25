@@ -1,9 +1,8 @@
-// src/wallet/smartAccount.ts - 更新网络配置
-import { DelegationFramework } from '@metamask/delegation-framework';
+// src/wallet/smartAccount.ts - Monad 测试网钱包集成
 import { ethers } from 'ethers';
 import { MetaMaskSDK } from '@metamask/sdk';
 
-// 更新的Monad测试网配置
+// Monad 测试网配置 (修正版)
 const MONAD_TESTNET_CONFIG = {
   chainId: '0x279f', // 10143 in hex (修正)
   chainName: 'Monad Testnet',
@@ -12,106 +11,70 @@ const MONAD_TESTNET_CONFIG = {
     symbol: 'MON',
     decimals: 18,
   },
-  rpcUrls: {
-    default: {
-      http: [
-        'https://testnet-rpc.monad.xyz',
-        'https://rpc-testnet.monad.xyz',
-        'https://monad-testnet-rpc.publicnode.com'
-      ],
-    },
-    public: {
-      http: [
-        'https://testnet-rpc.monad.xyz',
-        'https://rpc-testnet.monad.xyz'
-      ],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'Monad Testnet Explorer',
-      url: 'https://testnet-explorer.monad.xyz',
-    },
-  },
-  testnet: true,
+  rpcUrls: [
+    'https://testnet-rpc.monad.xyz/',           // 官方 RPC
+    'https://rpc.ankr.com/monad_testnet',       // Ankr 备用 RPC
+    'https://monad-testnet-rpc.publicnode.com/' // PublicNode 备用 RPC
+  ],
+  blockExplorerUrls: ['https://testnet.monadexplorer.com/'],
 };
 
 // 智能账户管理类
 export class SmartAccountManager {
-  private delegationFramework: DelegationFramework | null = null;
-  private provider: ethers.providers.JsonRpcProvider;
-  private walletClient: any;
-  private publicClient: any;
-  
+  private sdk: MetaMaskSDK;
+  private provider: ethers.BrowserProvider | null;
+  private signer: ethers.JsonRpcSigner | null;
+
   constructor() {
-    // 使用备用RPC端点
-    this.provider = this.createProvider();
-    
-    // 初始化viem客户端
-    this.walletClient = createWalletClient({
-      chain: MONAD_TESTNET_CONFIG,
-      transport: http(MONAD_TESTNET_CONFIG.rpcUrls.default.http[0]),
-    });
-    
-    this.publicClient = createPublicClient({
-      chain: MONAD_TESTNET_CONFIG,
-      transport: http(MONAD_TESTNET_CONFIG.rpcUrls.default.http[0]),
+    this.provider = null;
+    this.signer = null;
+    this.sdk = new MetaMaskSDK({
+      dappMetadata: {
+        name: 'Message Bottle DApp',
+        url: typeof window !== 'undefined' ? window.location.href : 'http://localhost:3000',
+      },
+      preferDesktop: false,
     });
   }
 
-  // 创建提供者，支持多个RPC端点
-  private createProvider(): ethers.providers.JsonRpcProvider {
-    const rpcUrls = MONAD_TESTNET_CONFIG.rpcUrls.default.http;
-    
-    // 尝试连接第一个RPC端点
-    for (const rpcUrl of rpcUrls) {
-      try {
-        return new ethers.providers.JsonRpcProvider(rpcUrl);
-      } catch (error) {
-        console.warn(`Failed to connect to ${rpcUrl}:`, error);
-        continue;
-      }
-    }
-    
-    // 如果所有端点都失败，使用第一个作为默认值
-    return new ethers.providers.JsonRpcProvider(rpcUrls[0]);
-  }
-
-  // 连接MetaMask钱包
+  // 连接 MetaMask 钱包
   async connect() {
     try {
-      // 连接EOA钱包（MetaMask）
-      if (!window.ethereum) {
-        throw new Error('请安装MetaMask钱包');
+      if (typeof window === 'undefined') {
+        throw new Error('Window is not available');
       }
 
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-      
-      // 先检查网络连接
-      await this.checkNetworkConnection();
-      
-      // 切换到Monad测试网
-      try {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: `0x${MONAD_TESTNET_CONFIG.id.toString(16)}` }],
-        });
-      } catch (switchError: any) {
-        // 如果网络不存在，添加网络
-        if (switchError.code === 4902) {
-          await this.addMonadNetwork();
-        } else {
-          throw switchError;
-        }
+      // 获取以太坊提供者
+      const ethereum = this.sdk.getProvider();
+      if (!ethereum) {
+        throw new Error('MetaMask not installed');
       }
+
+      console.log('🔗 Connecting to MetaMask...');
+
+      // 请求连接账户
+      const accounts = await ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts connected');
+      }
+
+      console.log('✅ Account connected:', accounts[0]);
 
       // 设置提供者
       this.provider = new ethers.BrowserProvider(ethereum);
       this.signer = await this.provider.getSigner();
 
-      // 暂时使用EOA地址作为智能账户地址（演示模式）
-      const smartAccountAddress = eoaAddress;
-      const isDeployed = true;
+      // 检查并切换到 Monad 测试网
+      await this.switchToMonadTestnet();
+
+      // 验证网络连接
+      const isCorrectNetwork = await this.verifyNetwork();
+      if (!isCorrectNetwork) {
+        console.warn('⚠️  Warning: Not connected to Monad Testnet');
+      }
 
       return {
         eoaAddress: accounts[0],
@@ -119,99 +82,262 @@ export class SmartAccountManager {
         isDeployed: true,
       };
     } catch (error) {
-      console.error('连接钱包失败:', error);
+      console.error('❌ 连接钱包失败:', error);
       throw error;
     }
   }
 
-  // 检查网络连接
-  private async checkNetworkConnection(): Promise<void> {
+  // 切换到 Monad 测试网
+  private async switchToMonadTestnet() {
     try {
-      const blockNumber = await this.provider.getBlockNumber();
-      console.log(`Connected to Monad testnet, block number: ${blockNumber}`);
+      const ethereum = this.sdk.getProvider();
+      if (!ethereum) {
+        throw new Error('MetaMask provider not available');
+      }
+
+      console.log('🔄 Attempting to switch to Monad Testnet (Chain ID: 10143)');
+
+      // 尝试切换到 Monad 测试网
+      try {
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: MONAD_TESTNET_CONFIG.chainId }],
+        });
+        console.log('✅ Successfully switched to Monad Testnet');
+      } catch (switchError: unknown) {
+        const error = switchError as { code?: number; message?: string };
+        console.log('⚠️  Switch failed, attempting to add network:', error.message);
+
+        // 处理不同的错误码
+        if (error.code === 4902 || error.code === -32002) {
+          console.log('➕ Network not found, adding Monad Testnet to MetaMask...');
+
+          // 验证 Chain ID 格式
+          const chainIdDecimal = parseInt(MONAD_TESTNET_CONFIG.chainId, 16);
+          console.log(`🔍 Chain ID validation: ${MONAD_TESTNET_CONFIG.chainId} (hex) = ${chainIdDecimal} (decimal)`);
+
+          if (chainIdDecimal !== 10143) {
+            throw new Error(`Chain ID configuration error: expected 10143 (0x279f), got ${chainIdDecimal} (${MONAD_TESTNET_CONFIG.chainId})`);
+          }
+
+          // 尝试用不同的 RPC 添加网络
+          await this.addNetworkWithFallback();
+
+          console.log('✅ Successfully added Monad Testnet');
+
+          // 等待一下再尝试切换
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // 添加网络后再次尝试切换
+          await ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: MONAD_TESTNET_CONFIG.chainId }],
+          });
+
+          console.log('✅ Successfully switched to newly added Monad Testnet');
+        } else if (error.code === 4001) {
+          throw new Error('User rejected network switch request');
+        } else {
+          console.error('Unexpected error during network switch:', error);
+          throw new Error(`Network switch failed: ${error.message || 'Unknown error'} (Code: ${error.code})`);
+        }
+      }
     } catch (error) {
-      console.warn('Network connection check failed:', error);
-      throw new Error('无法连接到Monad测试网，请检查网络状态');
+      console.error('❌ Failed to switch to Monad testnet:', error);
+      throw error;
     }
   }
 
-  // 添加Monad网络到MetaMask（使用多个RPC尝试）
-  private async addMonadNetwork(): Promise<void> {
-    const rpcUrls = MONAD_TESTNET_CONFIG.rpcUrls.default.http;
-    
-    for (const rpcUrl of rpcUrls) {
+  // 添加网络，支持 RPC 回退
+  private async addNetworkWithFallback() {
+    const ethereum = this.sdk.getProvider();
+    if (!ethereum) throw new Error('Ethereum provider not available');
+
+    for (let i = 0; i < MONAD_TESTNET_CONFIG.rpcUrls.length; i++) {
+      const rpcUrl = MONAD_TESTNET_CONFIG.rpcUrls[i];
+      console.log(`🔗 Trying RPC ${i + 1}/${MONAD_TESTNET_CONFIG.rpcUrls.length}: ${rpcUrl}`);
+
       try {
-        await window.ethereum.request({
+        await ethereum.request({
           method: 'wallet_addEthereumChain',
-          params: [
-            {
-              chainId: `0x${MONAD_TESTNET_CONFIG.id.toString(16)}`,
-              chainName: MONAD_TESTNET_CONFIG.name,
-              nativeCurrency: MONAD_TESTNET_CONFIG.nativeCurrency,
-              rpcUrls: [rpcUrl],
-              blockExplorerUrls: [MONAD_TESTNET_CONFIG.blockExplorers.default.url],
-            },
-          ],
+          params: [{
+            chainId: MONAD_TESTNET_CONFIG.chainId,
+            chainName: MONAD_TESTNET_CONFIG.chainName,
+            nativeCurrency: MONAD_TESTNET_CONFIG.nativeCurrency,
+            rpcUrls: [rpcUrl],
+            blockExplorerUrls: MONAD_TESTNET_CONFIG.blockExplorerUrls,
+          }],
         });
-        console.log(`Successfully added Monad network with RPC: ${rpcUrl}`);
+
+        console.log(`✅ Successfully added network with RPC: ${rpcUrl}`);
         return;
       } catch (error) {
-        console.warn(`Failed to add network with RPC ${rpcUrl}:`, error);
-        continue;
+        console.warn(`⚠️  Failed to add network with RPC ${rpcUrl}:`, error);
+        if (i === MONAD_TESTNET_CONFIG.rpcUrls.length - 1) {
+          throw new Error('All RPC endpoints failed when adding network');
+        }
       }
     }
-    
-    throw new Error('无法添加Monad测试网到MetaMask');
   }
 
-  // 检查智能账户是否已部署
-  private async isAccountDeployed(address: string): Promise<boolean> {
+  // 验证当前网络
+  private async verifyNetwork(): Promise<boolean> {
     try {
-      const code = await this.provider.getCode(address);
-      return code !== '0x';
+      if (!this.provider) {
+        console.warn('Provider not available for network verification');
+        return false;
+      }
+
+      const network = await this.provider.getNetwork();
+      const currentChainId = Number(network.chainId);
+      const expectedChainId = 10143;
+      const isCorrectNetwork = currentChainId === expectedChainId;
+
+      console.log('🔍 Network Verification:');
+      console.log(`   Current Chain ID: ${currentChainId}`);
+      console.log(`   Expected Chain ID: ${expectedChainId}`);
+      console.log(`   Network Name: ${network.name || 'unknown'}`);
+      console.log(`   Match Status: ${isCorrectNetwork ? '✅ CORRECT' : '❌ MISMATCH'}`);
+
+      if (!isCorrectNetwork) {
+        console.warn(`⚠️  Chain ID mismatch detected!`);
+        console.warn(`   Expected: 10143 (Monad Testnet)`);
+        console.warn(`   Actual: ${currentChainId}`);
+      }
+
+      return isCorrectNetwork;
     } catch (error) {
-      console.warn('Failed to check account deployment:', error);
+      console.error('❌ Network verification failed:', error);
       return false;
     }
   }
 
-  // 获取账户余额
-  async getBalance(address: string): Promise<string> {
+  // 获取智能账户地址
+  getSmartAccountAddress(): string | null {
+    return this.signer?.address || null;
+  }
+
+  // 检查智能账户是否已部署
+  async isSmartAccountDeployed(): Promise<boolean> {
+    // 简化版本，假设账户已部署
+    return true;
+  }
+
+  // 发送交易
+  async sendTransaction(tx: ethers.TransactionRequest) {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+
     try {
-      const balance = await this.provider.getBalance(address);
-      return ethers.utils.formatEther(balance);
+      const transaction = await this.signer.sendTransaction(tx);
+      return transaction;
     } catch (error) {
-      console.error('Failed to get balance:', error);
-      return '0.0';
+      console.error('发送交易失败:', error);
+      throw error;
     }
   }
 
-  // 模拟投放漂流瓶（演示模式）
+  // 获取余额
+  async getBalance(address?: string): Promise<string> {
+    if (!this.provider) {
+      throw new Error('Provider not available');
+    }
+
+    const targetAddress = address || await this.signer?.getAddress();
+    if (!targetAddress) {
+      throw new Error('No address available');
+    }
+
+    const balance = await this.provider.getBalance(targetAddress);
+    return ethers.formatEther(balance);
+  }
+
+  // 估算 Gas 费
+  async estimateGas(tx: ethers.TransactionRequest): Promise<bigint> {
+    if (!this.provider) {
+      throw new Error('Provider not available');
+    }
+
+    return await this.provider.estimateGas(tx);
+  }
+
+  // 获取网络信息
+  async getNetwork() {
+    if (!this.provider) {
+      throw new Error('Provider not available');
+    }
+
+    return await this.provider.getNetwork();
+  }
+
+  // 断开连接
+  disconnect() {
+    this.provider = null;
+    this.signer = null;
+    this.sdk.terminate();
+  }
+
+  // 监听账户变化
+  onAccountsChanged(callback: (accounts: string[]) => void) {
+    const ethereum = this.sdk.getProvider();
+    if (ethereum) {
+      ethereum.on('accountsChanged', callback);
+    }
+  }
+
+  // 监听网络变化
+  onChainChanged(callback: (chainId: string) => void) {
+    const ethereum = this.sdk.getProvider();
+    if (ethereum) {
+      ethereum.on('chainChanged', callback);
+    }
+  }
+
+  // 移除事件监听器
+  removeAllListeners() {
+    const ethereum = this.sdk.getProvider();
+    if (ethereum) {
+      ethereum.removeAllListeners('accountsChanged');
+      ethereum.removeAllListeners('chainChanged');
+    }
+  }
+
+  // 获取合约实例
+  getContract(address: string, abi: ethers.InterfaceAbi) {
+    if (!this.signer) {
+      throw new Error('Signer not available');
+    }
+
+    return new ethers.Contract(address, abi, this.signer);
+  }
+
+  // 演示模式：模拟投放漂流瓶
   async dropBottleDemo(
     bottleType: number,
     contentHash: string,
     latitude: number,
     longitude: number,
-    openTime: number = 0,
+    openTime: number = 0, // eslint-disable-line @typescript-eslint/no-unused-vars
     reward: string = "0"
   ): Promise<string> {
     try {
       // 模拟交易哈希
       const mockTxHash = `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
-      
+
       // 模拟延迟
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      console.log('Demo: Bottle dropped successfully', {
+
+      console.log('🎯 Demo: Bottle dropped successfully', {
         type: bottleType,
         content: contentHash,
         location: [latitude, longitude],
         reward
       });
-      
+
       return mockTxHash;
     } catch (error) {
-      console.error('Demo bottle drop failed:', error);
+      console.error('❌ Demo bottle drop failed:', error);
       throw error;
     }
   }
