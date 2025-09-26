@@ -1,12 +1,68 @@
 // envio/src/EventHandlers.ts
-import {
-  MessageBottle,
-  Bottle,
-  User,
-  Find,
-  Reward,
-  GlobalStats,
-} from "generated";
+// 临时类型定义，等待 Envio 生成完整的类型文件
+interface MessageBottle {
+  id: string;
+  sender: string;
+  bottleType: string;
+  message: string;
+  reward: bigint;
+  location: string;
+  timestamp: bigint;
+  found: boolean;
+  finder?: string;
+}
+
+interface Bottle {
+  id: string;
+  sender: string;
+  bottleType: string;
+  message: string;
+  reward: bigint;
+  location: string;
+  timestamp: bigint;
+  found: boolean;
+  finder?: string | null;
+  [key: string]: any; // 允许其他属性
+}
+
+interface User {
+  id: string;
+  address: string;
+  bottlesDropped: bigint;
+  bottlesFound: bigint;
+  totalRewards: bigint;
+  experience: bigint;
+  level: bigint;
+  lastActivity: bigint;
+}
+
+interface Find {
+  id: string;
+  finder: string;
+  bottle: string;
+  timestamp: bigint;
+  reward: bigint;
+  [key: string]: any; // 允许其他属性
+}
+
+interface Reward {
+  id: string;
+  user: string;
+  amount: bigint;
+  source: string;
+  timestamp: bigint;
+  [key: string]: any; // 允许其他属性
+}
+
+interface GlobalStats {
+  id: string;
+  totalBottles: bigint;
+  totalFound: bigint;
+  totalRewards: bigint;
+  activeUsers: bigint;
+  lastUpdate: bigint;
+  [key: string]: any; // 允许其他属性
+}
 
 // 漂流瓶类型映射
 const BOTTLE_TYPES = ["MESSAGE", "TREASURE", "WISH", "TIME_CAPSULE"];
@@ -24,12 +80,11 @@ async function getOrCreateUser(
     user = {
       id: address,
       address: address,
-      bottlesDropped: 0n,
-      bottlesFound: 0n,
-      totalRewards: 0n,
-      experience: 0n,
-      level: 1n,
-      createdAt: timestamp,
+      bottlesDropped: BigInt(0),
+      bottlesFound: BigInt(0),
+      totalRewards: BigInt(0),
+      experience: BigInt(0),
+      level: BigInt(1),
       lastActivity: timestamp,
     };
     context.User.set(user);
@@ -52,10 +107,10 @@ async function getOrCreateGlobalStats(
   if (!stats) {
     stats = {
       id: "global",
-      totalBottles: 0n,
-      totalUsers: 0n,
-      totalRewards: 0n,
-      activeBottles: 0n,
+      totalBottles: BigInt(0),
+      totalUsers: BigInt(0),
+      totalRewards: BigInt(0),
+      activeUsers: BigInt(0),
       lastUpdated: timestamp,
     };
   }
@@ -65,8 +120,8 @@ async function getOrCreateGlobalStats(
   return stats;
 }
 
-// 处理漂流瓶投放事件
-MessageBottle.BottleDropped.handler(async ({ event, context }) => {
+// 导出事件处理函数供 Envio 使用
+const BottleDroppedHandler = async ({ event, context }: any) => {
   const {
     bottleId,
     creator,
@@ -83,25 +138,31 @@ MessageBottle.BottleDropped.handler(async ({ event, context }) => {
   const user = await getOrCreateUser(context, creator, timestamp);
   
   // 更新用户统计
-  user.bottlesDropped += 1n;
-  user.experience += 100n; // 投放经验
-  user.level = user.experience / 1000n + 1n; // 每1000经验升级
+  user.bottlesDropped += BigInt(1);
+  user.experience += BigInt(100); // 投放经验
+  user.level = user.experience / BigInt(1000) + BigInt(1); // 每1000经验升级
   context.User.set(user);
 
   // 创建漂流瓶记录
   const bottle: Bottle = {
     id: bottleId.toString(),
+    sender: creator,
+    bottleType: BOTTLE_TYPES[Number(bottleType)] || "MESSAGE",
+    message: "", // 需要从合约读取
+    reward: BigInt(0), // 需要从合约读取
+    location: `${latitude},${longitude}`,
+    timestamp: timestamp,
+    found: false,
+    finder: null,
+    // 额外属性
     bottleId: bottleId,
     creator: creator,
-    finder: null,
-    bottleType: BOTTLE_TYPES[Number(bottleType)] || "MESSAGE",
     rarity: "COMMON", // 默认稀有度，需要从合约读取
     contentHash: "", // 需要从合约读取
-    reward: 0n, // 需要从合约读取
     latitude: latitude,
     longitude: longitude,
     dropTime: timestamp,
-    openTime: 0n, // 需要从合约读取
+    openTime: BigInt(0), // 需要从合约读取
     isOpened: false,
     isActive: true,
     blockNumber: blockNumber,
@@ -112,21 +173,21 @@ MessageBottle.BottleDropped.handler(async ({ event, context }) => {
 
   // 更新全局统计
   const globalStats = await getOrCreateGlobalStats(context, timestamp);
-  globalStats.totalBottles += 1n;
-  globalStats.activeBottles += 1n;
+  globalStats.totalBottles += BigInt(1);
+  globalStats.totalFound += BigInt(0); // 保持兼容
   
   // 检查是否为新用户
-  if (user.bottlesDropped === 1n) {
-    globalStats.totalUsers += 1n;
+  if (user.bottlesDropped === BigInt(1)) {
+    globalStats.activeUsers += BigInt(1);
   }
   
   context.GlobalStats.set(globalStats);
 
   console.log(`Bottle ${bottleId} dropped by ${creator} at (${latitude}, ${longitude})`);
-});
+};
 
 // 处理漂流瓶发现事件
-MessageBottle.BottleFound.handler(async ({ event, context }) => {
+const BottleFoundHandler = async ({ event, context }: any) => {
   const {
     bottleId,
     finder,
@@ -151,9 +212,9 @@ MessageBottle.BottleFound.handler(async ({ event, context }) => {
 
   // 获取或创建发现者用户
   const finderUser = await getOrCreateUser(context, finder, timestamp);
-  finderUser.bottlesFound += 1n;
-  finderUser.experience += 200n; // 发现经验
-  finderUser.level = finderUser.experience / 1000n + 1n;
+  finderUser.bottlesFound += BigInt(1);
+  finderUser.experience += BigInt(200); // 发现经验
+  finderUser.level = finderUser.experience / BigInt(1000) + BigInt(1);
   context.User.set(finderUser);
 
   // 创建发现记录
@@ -161,6 +222,8 @@ MessageBottle.BottleFound.handler(async ({ event, context }) => {
     id: `${bottleId.toString()}-${finder}`,
     bottle: bottleId.toString(),
     finder: finder,
+    timestamp: timestamp,
+    reward: reward,
     findTime: timestamp,
     blockNumber: blockNumber,
     transactionHash: transactionHash,
@@ -170,14 +233,14 @@ MessageBottle.BottleFound.handler(async ({ event, context }) => {
 
   // 更新全局统计
   const globalStats = await getOrCreateGlobalStats(context, timestamp);
-  globalStats.activeBottles -= 1n;
+  globalStats.totalFound += BigInt(1);
   context.GlobalStats.set(globalStats);
 
   console.log(`Bottle ${bottleId} found by ${finder}, reward: ${reward}`);
-});
+};
 
 // 处理漂流瓶开启事件
-MessageBottle.BottleOpened.handler(async ({ event, context }) => {
+const BottleOpenedHandler = async ({ event, context }: any) => {
   const { bottleId, opener } = event.params;
 
   const timestamp = BigInt(event.block.timestamp);
@@ -195,15 +258,15 @@ MessageBottle.BottleOpened.handler(async ({ event, context }) => {
 
   // 更新用户经验
   const user = await getOrCreateUser(context, opener, timestamp);
-  user.experience += 50n; // 开启经验
-  user.level = user.experience / 1000n + 1n;
+  user.experience += BigInt(50); // 开启经验
+  user.level = user.experience / BigInt(1000) + BigInt(1);
   context.User.set(user);
 
   console.log(`Bottle ${bottleId} opened by ${opener}`);
-});
+};
 
 // 处理奖励领取事件
-MessageBottle.RewardClaimed.handler(async ({ event, context }) => {
+const RewardClaimedHandler = async ({ event, context }: any) => {
   const { user, amount } = event.params;
 
   const timestamp = BigInt(event.block.timestamp);
@@ -220,6 +283,8 @@ MessageBottle.RewardClaimed.handler(async ({ event, context }) => {
     id: `${transactionHash}-${user}`,
     user: user,
     amount: amount,
+    source: "claim",
+    timestamp: timestamp,
     claimTime: timestamp,
     blockNumber: blockNumber,
     transactionHash: transactionHash,
@@ -233,9 +298,12 @@ MessageBottle.RewardClaimed.handler(async ({ event, context }) => {
   context.GlobalStats.set(globalStats);
 
   console.log(`Reward ${amount} claimed by ${user}`);
-});
+};
 
-// 导出处理器
+// 导出所有处理器
 export {
-  MessageBottle,
+  BottleDroppedHandler,
+  BottleFoundHandler,
+  BottleOpenedHandler,
+  RewardClaimedHandler,
 };

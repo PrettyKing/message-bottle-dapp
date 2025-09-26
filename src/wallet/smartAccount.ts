@@ -55,7 +55,7 @@ export class SmartAccountManager {
       // 请求连接账户
       const accounts = await ethereum.request({
         method: 'eth_requestAccounts',
-      });
+      }) as string[];
 
       if (!accounts || accounts.length === 0) {
         throw new Error('No accounts connected');
@@ -282,7 +282,9 @@ export class SmartAccountManager {
   onAccountsChanged(callback: (accounts: string[]) => void) {
     const ethereum = this.sdk.getProvider();
     if (ethereum) {
-      ethereum.on('accountsChanged', callback);
+      ethereum.on('accountsChanged', (accounts: unknown) => {
+        callback(accounts as string[]);
+      });
     }
   }
 
@@ -290,7 +292,9 @@ export class SmartAccountManager {
   onChainChanged(callback: (chainId: string) => void) {
     const ethereum = this.sdk.getProvider();
     if (ethereum) {
-      ethereum.on('chainChanged', callback);
+      ethereum.on('chainChanged', (chainId: unknown) => {
+        callback(chainId as string);
+      });
     }
   }
 
