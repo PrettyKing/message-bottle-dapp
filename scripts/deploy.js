@@ -9,7 +9,7 @@ async function main() {
   console.log("账户余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH");
 
   // 部署合约
-  const MessageBottle = await ethers.getContractFactory("MessageBottle");
+  const MessageBottle = await ethers.getContractFactory("MessageBottleSimple");
   const messageBottle = await MessageBottle.deploy();
 
   await messageBottle.waitForDeployment();
@@ -52,8 +52,8 @@ async function main() {
     const totalBottles = await messageBottle.getTotalBottles();
     console.log("初始瓶子总数:", totalBottles.toString());
 
-    const availableBottles = await messageBottle.getAvailableBottlesCount();
-    console.log("可用瓶子数量:", availableBottles.toString());
+    const availableBottles = await messageBottle.getAvailableBottleIds();
+    console.log("可用瓶子数量:", availableBottles.length.toString());
 
     console.log("✅ 合约功能验证成功!");
   } catch (error) {

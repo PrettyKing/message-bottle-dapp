@@ -1,9 +1,12 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Gift, Heart, Clock, MapPin, User, Waves, Plus, Search, Settings, Zap, Brain, Eye } from 'lucide-react';
+import { MessageCircle, Gift, Heart, Clock, MapPin, User, Waves, Plus, Search, Settings, Zap, Brain, Eye, Tag, X, Rocket } from 'lucide-react';
 import { smartAccountManager } from '../wallet/smartAccount';
 import { useBottleQueries } from '../graphql/queries';
+import SuccessModal from './SuccessModal';
+import { useLocalStorage, STORAGE_KEYS } from '../hooks/useLocalStorage';
+import { notify } from '../utils/notifications';
 
 interface UserStats {
   bottlesDropped: number;
@@ -24,7 +27,9 @@ interface WalletState {
 
 const MessageBottleApp = () => {
   const [currentView, setCurrentView] = useState('ocean');
-  const [userStats, setUserStats] = useState<UserStats>({
+
+  // 使用本地存储持久化用户统计
+  const [userStats, setUserStats] = useLocalStorage<UserStats>(STORAGE_KEYS.USER_STATS, {
     bottlesDropped: 0,
     bottlesFound: 0,
     totalRewards: 0,
@@ -51,6 +56,19 @@ const MessageBottleApp = () => {
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [smartInput, setSmartInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [successModal, setSuccessModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'drop' | 'find' | 'level';
+    experience?: number;
+    level?: number;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'drop'
+  });
   const mousePos = useRef({ x: 0, y: 0 });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -308,7 +326,8 @@ const MessageBottleApp = () => {
     placeholder = '',
     type = 'text',
     aiSuggestions = false,
-    className = ''
+    className = '',
+    onKeyPress
   }: {
     value: string;
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
@@ -316,6 +335,7 @@ const MessageBottleApp = () => {
     type?: string;
     aiSuggestions?: boolean;
     className?: string;
+    onKeyPress?: (e: React.KeyboardEvent) => void;
   }) => (
     <div className="relative group">
       {type === 'textarea' ? (
@@ -323,6 +343,7 @@ const MessageBottleApp = () => {
           value={value}
           onChange={onChange}
           placeholder={placeholder}
+          onKeyPress={onKeyPress}
           className={`
             w-full p-6 bg-slate-900/50 border-2 border-slate-700/50 rounded-2xl
             text-white placeholder-slate-400 resize-none backdrop-blur-xl
@@ -339,6 +360,7 @@ const MessageBottleApp = () => {
           value={value}
           onChange={onChange}
           placeholder={placeholder}
+          onKeyPress={onKeyPress}
           className={`
             w-full p-6 bg-slate-900/50 border-2 border-slate-700/50 rounded-2xl
             text-white placeholder-slate-400 backdrop-blur-xl
@@ -370,6 +392,12 @@ const MessageBottleApp = () => {
     const [message, setMessage] = useState('');
     const [reward, setReward] = useState('');
     const [isDropping, setIsDropping] = useState(false);
+    const [dropAnimation, setDropAnimation] = useState(false);
+    const [previewMode, setPreviewMode] = useState(false);
+    const [selectedLocation, setSelectedLocation] = useState('neural_ocean');
+    const [mood, setMood] = useState('');
+    const [tags, setTags] = useState<string[]>([]);
+    const [newTag, setNewTag] = useState('');
 
     const bottleTypes = [
       {
@@ -378,7 +406,9 @@ const MessageBottleApp = () => {
         label: '神经消息瓶',
         color: 'from-blue-500 to-cyan-500',
         desc: '思维传输',
-        glow: 'shadow-blue-500/50'
+        glow: 'shadow-blue-500/50',
+        features: ['即时传输', '情感共振', '跨时空通信'],
+        complexity: 'simple'
       },
       {
         id: 'TREASURE',
@@ -386,7 +416,9 @@ const MessageBottleApp = () => {
         label: '量子宝藏瓶',
         color: 'from-amber-500 to-orange-500',
         desc: '数字财富',
-        glow: 'shadow-amber-500/50'
+        glow: 'shadow-amber-500/50',
+        features: ['加密奖励', '智能合约', '自动分发'],
+        complexity: 'advanced'
       },
       {
         id: 'WISH',
@@ -394,7 +426,9 @@ const MessageBottleApp = () => {
         label: '情感共振瓶',
         color: 'from-rose-500 to-pink-500',
         desc: '心灵连接',
-        glow: 'shadow-rose-500/50'
+        glow: 'shadow-rose-500/50',
+        features: ['情感识别', '共鸣匹配', '治愈能量'],
+        complexity: 'medium'
       },
       {
         id: 'TIME_CAPSULE',
@@ -402,23 +436,149 @@ const MessageBottleApp = () => {
         label: '时空胶囊',
         color: 'from-purple-500 to-violet-500',
         desc: '未来记忆',
-        glow: 'shadow-purple-500/50'
+        glow: 'shadow-purple-500/50',
+        features: ['延时释放', '时间锁定', '预约传送'],
+        complexity: 'expert'
       }
     ];
+
+    const dropLocations = [
+      {
+        id: 'neural_ocean',
+        name: '神经海洋中心',
+        desc: '最活跃的思维交汇区域',
+        discovery: '高',
+        traffic: 95
+      },
+      {
+        id: 'quantum_deep',
+        name: '量子深渊',
+        desc: '神秘的深层意识空间',
+        discovery: '中',
+        traffic: 65
+      },
+      {
+        id: 'memory_shores',
+        name: '记忆海岸',
+        desc: '温暖的回忆聚集地',
+        discovery: '高',
+        traffic: 88
+      },
+      {
+        id: 'dream_currents',
+        name: '梦境洋流',
+        desc: '创意与想象的漩涡',
+        discovery: '低',
+        traffic: 45
+      }
+    ];
+
+    const popularTags = ['希望', '友谊', '科技', '未来', '爱情', '冒险', '智慧', '创新'];
 
     const handleDropBottle = async () => {
       if (!walletState.smartAccountAddress || !message.trim()) return;
 
       setIsDropping(true);
+      setDropAnimation(true);
+
       try {
+        // 获取选中的位置信息
+        const location = dropLocations.find(loc => loc.id === selectedLocation);
+
+        // 模拟智能合约交互
+        console.log('🌊 Dropping bottle...', {
+          type: selectedType,
+          message: message.slice(0, 50) + '...',
+          reward: reward || '0',
+          location: location?.name || 'Neural Ocean',
+          mood,
+          tags,
+          coordinates: {
+            x: Math.random() * 1000,
+            y: Math.random() * 1000
+          }
+        });
+
+        // 模拟区块链交易延迟和动画
         await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // 计算经验奖励
+        const baseExp = 100;
+        const complexityBonus: { [key: string]: number } = {
+          'simple': 0,
+          'medium': 50,
+          'advanced': 100,
+          'expert': 200
+        };
+        const selectedBottleType = bottleTypes.find(bt => bt.id === selectedType);
+        const complexity = selectedBottleType?.complexity || 'simple';
+        const experienceGained = baseExp + (complexityBonus[complexity] || 0);
+
+        // 更新用户统计
+        setUserStats(prev => ({
+          ...prev,
+          bottlesDropped: prev.bottlesDropped + 1,
+          experience: prev.experience + experienceGained,
+          level: Math.floor((prev.experience + experienceGained) / 1000) + 1
+        }));
+
+        // 重置表单
         setMessage('');
         setReward('');
-        // 未来感成功提示
+        setMood('');
+        setTags([]);
+        setNewTag('');
+
+        // 显示成功模态框
+        setSuccessModal({
+          isOpen: true,
+          title: '🌊 量子传输完成！',
+          message: `您的${selectedBottleType?.label}已成功投放到${location?.name}！获得了 ${experienceGained} 神经积分。`,
+          type: 'drop',
+          experience: experienceGained,
+          level: Math.floor((userStats.experience + experienceGained) / 1000) + 1
+        });
+
+        // 发送通知
+        notify.success('投放成功', `您的${selectedBottleType?.label}已在${location?.name}成功部署！`);
+        console.log('✅ Bottle dropped successfully!');
       } catch (error) {
-        console.error('Drop failed:', error);
+        console.error('❌ Drop failed:', error);
+        setError('量子传输失败，请重试。');
       } finally {
         setIsDropping(false);
+        setTimeout(() => setDropAnimation(false), 1000);
+      }
+    };
+
+    const addTag = () => {
+      if (newTag.trim() && !tags.includes(newTag.trim()) && tags.length < 5) {
+        setTags([...tags, newTag.trim()]);
+        setNewTag('');
+      }
+    };
+
+    const removeTag = (tagToRemove: string) => {
+      setTags(tags.filter(tag => tag !== tagToRemove));
+    };
+
+    const getComplexityColor = (complexity: string) => {
+      switch (complexity) {
+        case 'simple': return 'text-green-400';
+        case 'medium': return 'text-yellow-400';
+        case 'advanced': return 'text-orange-400';
+        case 'expert': return 'text-red-400';
+        default: return 'text-gray-400';
+      }
+    };
+
+    const getComplexityLabel = (complexity: string) => {
+      switch (complexity) {
+        case 'simple': return '简单';
+        case 'medium': return '中等';
+        case 'advanced': return '高级';
+        case 'expert': return '专家';
+        default: return '未知';
       }
     };
 
@@ -431,190 +591,551 @@ const MessageBottleApp = () => {
           <div className="quantum-field"></div>
         </div>
 
-        {/* 顶部导航 - 未来感 */}
-        <div className="relative z-10 p-6">
-          <NeuralCard padding="p-6" variant="neural" glow>
+        {/* 顶部导航栏 - PC端优化 */}
+        <div className="relative z-10 border-b border-white/10 backdrop-blur-xl bg-slate-900/30">
+          <div className="max-w-7xl mx-auto px-8 py-4">
             <div className="flex justify-between items-center">
-              <FutureButton
-                onClick={() => setCurrentView('ocean')}
-                variant="ghost"
-                size="md"
-                className="!p-4 !min-h-0"
-              >
-                <Waves className="text-white w-6 h-6" />
-              </FutureButton>
+              <div className="flex items-center gap-6">
+                <FutureButton
+                  onClick={() => setCurrentView('ocean')}
+                  variant="ghost"
+                  size="md"
+                  className="!px-4 !py-2"
+                >
+                  <Waves className="w-5 h-5 mr-2" />
+                  返回海洋
+                </FutureButton>
+                <div className="h-6 w-px bg-white/20"></div>
+                <div className="flex items-center gap-3">
+                  <Brain className="w-7 h-7 text-purple-400 animate-pulse" />
+                  <h1 className="text-white font-bold text-xl tracking-wide">神经瓶子工厂</h1>
+                </div>
+              </div>
 
               <div className="flex items-center gap-4">
-                <Brain className="w-8 h-8 text-purple-400 animate-pulse" />
-                <h1 className="text-white font-bold text-2xl tracking-wide">Neural Drop</h1>
+                <FutureButton
+                  onClick={() => setAiMode(!aiMode)}
+                  variant={aiMode ? 'neural' : 'ghost'}
+                  size="sm"
+                  neural={aiMode}
+                  className="!px-3 !py-2"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  {aiMode ? 'AI增强' : 'AI辅助'}
+                </FutureButton>
+                <FutureButton
+                  onClick={() => setPreviewMode(!previewMode)}
+                  variant={previewMode ? 'quantum' : 'ghost'}
+                  size="sm"
+                  className="!px-3 !py-2"
+                >
+                  <Search className="w-4 h-4 mr-2" />
+                  {previewMode ? '退出预览' : '3D预览'}
+                </FutureButton>
               </div>
-
-              <FutureButton
-                onClick={() => setAiMode(!aiMode)}
-                variant={aiMode ? 'neural' : 'ghost'}
-                size="sm"
-                neural={aiMode}
-                className="!p-3 !min-h-0"
-              >
-                <Eye className="w-5 h-5" />
-              </FutureButton>
             </div>
-          </NeuralCard>
+          </div>
         </div>
 
-        {/* 主要内容 */}
-        <div className="relative z-10 px-6 space-y-8">
-          {/* 瓶子类型选择 - 3D网格 */}
-          <NeuralCard variant="default" glow>
-            <div className="flex items-center gap-4 mb-8">
-              <Zap className="w-8 h-8 text-blue-400 animate-pulse" />
-              <h2 className="text-white text-2xl font-bold tracking-wide">选择容器类型</h2>
-            </div>
+        {/* PC端双栏布局 */}
+        <div className="max-w-7xl mx-auto px-8 py-8 relative z-10">
+          <div className="grid grid-cols-12 gap-8 h-[calc(100vh-12rem)]">
 
-            <div className="grid grid-cols-2 gap-6">
-              {bottleTypes.map((type, index) => {
-                const Icon = type.icon;
-                return (
-                  <div
-                    key={type.id}
-                    onClick={() => setSelectedType(type.id)}
-                    className={`
-                      relative group cursor-pointer p-8 rounded-3xl transition-all duration-500
-                      bg-gradient-to-br ${type.color} hover:scale-105
-                      ${selectedType === type.id
-                        ? `ring-4 ring-white/50 scale-105 ${type.glow} shadow-2xl`
-                        : 'shadow-xl hover:shadow-2xl'
-                      }
-                      neural-container
-                    `}
-                    style={{ animationDelay: `${index * 0.1}s` }}
-                  >
-                    {/* 3D深度效果 */}
-                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-t from-black/20 to-transparent"></div>
+            {/* 左侧配置面板 */}
+            <div className="col-span-8 space-y-5 overflow-y-auto custom-scrollbar pr-4">
 
-                    {/* 选中指示器 */}
-                    {selectedType === type.id && (
-                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg animate-bounce-gentle">
-                        <div className="w-4 h-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+              {/* 瓶子类型选择 - PC端紧凑版 */}
+              <NeuralCard variant="default" glow padding="p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <Zap className="w-6 h-6 text-blue-400" />
+                  <h2 className="text-white text-lg font-bold">瓶子类型</h2>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  {bottleTypes.map((type, index) => {
+                    const Icon = type.icon;
+                    return (
+                      <div
+                        key={type.id}
+                        onClick={() => setSelectedType(type.id)}
+                        className={`
+                          relative cursor-pointer p-4 rounded-xl transition-all duration-300
+                          ${selectedType === type.id
+                            ? `bg-gradient-to-br ${type.color} ring-2 ring-white/50 scale-105`
+                            : 'bg-slate-800/50 hover:bg-slate-700/50 hover:scale-105'
+                          }
+                          border border-white/10 hover:border-white/20 group
+                        `}
+                      >
+                        <div className="text-center space-y-2">
+                          <Icon className={`w-8 h-8 mx-auto transition-colors duration-300 ${
+                            selectedType === type.id ? 'text-white' : 'text-slate-300 group-hover:text-white'
+                          }`} />
+                          <div className={`text-sm font-medium transition-colors duration-300 ${
+                            selectedType === type.id ? 'text-white' : 'text-slate-300 group-hover:text-white'
+                          }`}>
+                            {type.label.replace('神经', '').replace('量子', '').replace('情感共振', '心灵').replace('时空胶囊', '时光')}
+                          </div>
+                          <div className={`text-xs px-2 py-1 rounded-full ${getComplexityColor(type.complexity)} bg-black/20`}>
+                            {getComplexityLabel(type.complexity)}
+                          </div>
+                        </div>
+                        {selectedType === type.id && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          </div>
+                        )}
                       </div>
-                    )}
-
-                    <div className="relative z-10 flex flex-col items-center space-y-4 text-center">
-                      <Icon className="w-12 h-12 text-white drop-shadow-lg" />
-                      <div className="text-white font-bold text-lg">{type.label}</div>
-                      <div className="text-white/80 text-sm">{type.desc}</div>
-                    </div>
-
-                    {/* 悬停粒子效果 */}
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                      <div className="particle-field"></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </NeuralCard>
-
-          {/* 智能消息输入 */}
-          <NeuralCard variant="primary" glow>
-            <div className="flex items-center gap-4 mb-6">
-              <MessageCircle className="w-8 h-8 text-blue-400 animate-pulse" />
-              <h3 className="text-white text-xl font-bold">神经链接消息</h3>
-            </div>
-
-            <div className="space-y-6">
-              <SmartInput
-                value={message}
-                onChange={(e) => {
-                  setMessage(e.target.value);
-                  if (aiMode && e.target.value.length > 10) {
-                    handleAiSuggestion(e.target.value);
-                  }
-                }}
-                placeholder={aiMode ? "AI正在分析您的思维模式..." : "输入您的消息内容..."}
-                type="textarea"
-                aiSuggestions={aiMode}
-              />
-
-              {/* AI建议显示 */}
-              {aiMode && aiSuggestion && (
-                <div className="p-4 rounded-xl bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/30">
-                  <div className="flex items-start gap-3">
-                    <Brain className="w-5 h-5 text-purple-400 mt-1 animate-pulse" />
-                    <div className="flex-1">
-                      <div className="text-purple-300 text-sm font-medium mb-2">AI智能建议：</div>
-                      <div className="text-white/80 text-sm leading-relaxed">{aiSuggestion}</div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
 
-              <div className="flex justify-between items-center">
-                <div className="text-slate-400 text-sm">
-                  字符: {message.length}/500
-                </div>
-                {aiMode && (
-                  <div className="flex items-center gap-2 text-purple-400 text-sm">
-                    <Brain className="w-4 h-4 animate-pulse" />
-                    <span>{isAiThinking ? 'AI思考中...' : 'AI增强模式'}</span>
+                {/* 选中类型的详细信息 */}
+                {selectedType && (
+                  <div className="mt-4 p-4 bg-slate-800/30 rounded-xl">
+                    {(() => {
+                      const selected = bottleTypes.find(t => t.id === selectedType);
+                      if (!selected) return null;
+                      const Icon = selected.icon;
+                      return (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Icon className="w-5 h-5 text-blue-400" />
+                            <div>
+                              <div className="text-white font-medium text-sm">{selected.label}</div>
+                              <div className="text-slate-400 text-xs">{selected.desc}</div>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {selected.features.map((feature, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
+                                {feature}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
-              </div>
-            </div>
-          </NeuralCard>
+              </NeuralCard>
 
-          {/* 量子宝藏设置 */}
-          {selectedType === 'TREASURE' && (
-            <NeuralCard variant="quantum" glow>
-              <div className="flex items-center gap-4 mb-6">
-                <Gift className="w-8 h-8 text-emerald-400 animate-pulse" />
-                <h3 className="text-white text-xl font-bold">量子奖励设置</h3>
-              </div>
-
-              <div className="space-y-6">
-                <SmartInput
-                  value={reward}
-                  onChange={(e) => setReward(e.target.value)}
-                  placeholder="0.001 MON"
-                  type="number"
-                />
-
-                <p className="text-slate-300 text-sm leading-relaxed">
-                  奖励将通过量子隧道效应传输给发现者，确保去中心化分发
-                </p>
-              </div>
-            </NeuralCard>
-          )}
-
-          {/* 投放按钮 */}
-          <div className="pb-10">
-            <FutureButton
-              onClick={handleDropBottle}
-              disabled={isDropping || !message.trim()}
-              loading={isDropping}
-              variant="neural"
-              size="xl"
-              className="w-full"
-              neural
-              quantum
-            >
-              {isDropping ? (
-                <div className="flex items-center gap-3">
-                  <div className="neural-loading"></div>
-                  <span>量子传输中...</span>
+              {/* 投放位置选择 - PC端紧凑版 */}
+              <NeuralCard variant="quantum" glow padding="p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <MapPin className="w-6 h-6 text-emerald-400" />
+                  <h3 className="text-white text-lg font-bold">投放区域</h3>
                 </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <Zap className="w-6 h-6" />
-                  <span>启动神经传输</span>
-                  <div className="ml-2 text-sm opacity-70">🚀</div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {dropLocations.map((location) => (
+                    <div
+                      key={location.id}
+                      onClick={() => setSelectedLocation(location.id)}
+                      className={`
+                        p-3 rounded-xl cursor-pointer transition-all duration-300 group
+                        ${selectedLocation === location.id
+                          ? 'bg-gradient-to-r from-emerald-600/80 to-teal-600/80 ring-2 ring-emerald-400/50'
+                          : 'bg-slate-800/50 hover:bg-slate-700/70'
+                        }
+                        border border-white/10 hover:border-white/20
+                      `}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className={`font-medium text-sm ${
+                          selectedLocation === location.id ? 'text-white' : 'text-slate-200 group-hover:text-white'
+                        }`}>
+                          {location.name}
+                        </h4>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          location.discovery === '高' ? 'bg-green-500/30 text-green-300' :
+                          location.discovery === '中' ? 'bg-yellow-500/30 text-yellow-300' :
+                          'bg-red-500/30 text-red-300'
+                        }`}>
+                          {location.discovery}
+                        </span>
+                      </div>
+                      <p className="text-slate-400 text-xs mb-2">{location.desc}</p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 bg-slate-700 rounded-full h-1.5 mr-2">
+                          <div
+                            className="bg-gradient-to-r from-emerald-500 to-teal-500 h-1.5 rounded-full transition-all duration-500"
+                            style={{ width: `${location.traffic}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-slate-400 font-medium">{location.traffic}%</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              </NeuralCard>
+
+              {/* 智能消息输入 - PC端紧凑版 */}
+              <NeuralCard variant="primary" glow padding="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <MessageCircle className="w-6 h-6 text-blue-400" />
+                    <h3 className="text-white text-lg font-bold">消息内容</h3>
+                  </div>
+                  <div className="text-slate-400 text-sm">
+                    {message.length}/500
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <SmartInput
+                    value={message}
+                    onChange={(e) => {
+                      setMessage(e.target.value);
+                      if (aiMode && e.target.value.length > 10) {
+                        handleAiSuggestion(e.target.value);
+                      }
+                    }}
+                    placeholder={aiMode ? "AI正在分析您的思维模式..." : "输入您的消息内容..."}
+                    type="textarea"
+                    aiSuggestions={aiMode}
+                    className="!p-4 !text-sm"
+                  />
+
+                  {/* 心情和标签 - 水平布局 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* 心情选择器 */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Heart className="w-4 h-4 text-rose-400" />
+                        <span className="text-white text-sm font-medium">情感</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['😊 快乐', '💭 思考', '🌟 兴奋', '💙 平静'].map((emotion) => (
+                          <button
+                            key={emotion}
+                            onClick={() => setMood(mood === emotion ? '' : emotion)}
+                            className={`
+                              px-2 py-1.5 rounded-lg text-xs transition-all duration-300 text-center
+                              ${mood === emotion
+                                ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white'
+                                : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/70'
+                              }
+                              border border-white/10 hover:border-white/20
+                            `}
+                          >
+                            {emotion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 标签系统 */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Tag className="w-4 h-4 text-purple-400" />
+                        <span className="text-white text-sm font-medium">标签 ({tags.length}/5)</span>
+                      </div>
+
+                      {/* 标签输入 */}
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addTag()}
+                          placeholder="添加标签..."
+                          className="flex-1 px-3 py-1.5 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 text-sm focus:outline-none focus:border-purple-400 transition-colors"
+                        />
+                        <button
+                          onClick={addTag}
+                          disabled={!newTag.trim() || tags.length >= 5}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-600 disabled:opacity-50 text-white rounded-lg transition-colors text-sm"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* 已选标签 */}
+                      <div className="flex flex-wrap gap-1">
+                        {tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="px-2 py-1 bg-purple-500/80 text-white text-xs rounded-full flex items-center gap-1"
+                          >
+                            {tag}
+                            <button
+                              onClick={() => removeTag(tag)}
+                              className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* 热门标签 */}
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {popularTags.filter(tag => !tags.includes(tag)).slice(0, 4).map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => tags.length < 5 && setTags([...tags, tag])}
+                            className="px-2 py-1 bg-slate-700/50 text-slate-300 text-xs rounded-full hover:bg-slate-600/70 transition-colors"
+                            disabled={tags.length >= 5}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI建议显示 */}
+                  {aiMode && aiSuggestion && (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/30">
+                      <div className="flex items-start gap-3">
+                        <Brain className="w-4 h-4 text-purple-400 mt-0.5" />
+                        <div className="flex-1">
+                          <div className="text-purple-300 text-xs font-medium mb-1">AI建议：</div>
+                          <div className="text-white/80 text-xs leading-relaxed">{aiSuggestion}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </NeuralCard>
+
+              {/* 量子宝藏设置 - PC端紧凑版 */}
+              {selectedType === 'TREASURE' && (
+                <NeuralCard variant="quantum" glow padding="p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Gift className="w-6 h-6 text-emerald-400" />
+                    <h3 className="text-white text-lg font-bold">奖励设置</h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    <input
+                      type="number"
+                      value={reward}
+                      onChange={(e) => setReward(e.target.value)}
+                      placeholder="0.001 MON"
+                      step="0.001"
+                      min="0"
+                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-emerald-400 transition-colors"
+                    />
+                    <p className="text-slate-400 text-xs leading-relaxed">
+                      奖励将通过智能合约自动分发给发现者
+                    </p>
+                  </div>
+                </NeuralCard>
               )}
-            </FutureButton>
+            </div>
+
+            {/* 右侧预览面板 */}
+            <div className="col-span-4 space-y-5">
+
+              {/* 实时预览卡片 */}
+              <NeuralCard variant="neural" glow padding="p-5" className="sticky top-0">
+                <div className="flex items-center gap-3 mb-4">
+                  <Rocket className="w-6 h-6 text-yellow-400" />
+                  <h3 className="text-white text-lg font-bold">实时预览</h3>
+                </div>
+
+                {/* 瓶子3D预览 */}
+                <div className="relative mb-6">
+                  <div className={`
+                    w-full h-40 rounded-2xl flex items-center justify-center
+                    bg-gradient-to-br ${bottleTypes.find(bt => bt.id === selectedType)?.color || 'from-slate-700 to-slate-600'}
+                    ${dropAnimation ? 'animate-pulse' : ''}
+                    shadow-xl
+                  `}>
+                    {(() => {
+                      const selectedBottleType = bottleTypes.find(bt => bt.id === selectedType);
+                      const Icon = selectedBottleType?.icon || MessageCircle;
+                      return (
+                        <div className="text-center space-y-3">
+                          <Icon className="w-16 h-16 text-white mx-auto drop-shadow-lg" />
+                          <div className="text-white font-bold text-lg">{selectedBottleType?.label}</div>
+                          <div className={`text-xs px-3 py-1 rounded-full ${getComplexityColor(selectedBottleType?.complexity || 'simple')} bg-black/30`}>
+                            {getComplexityLabel(selectedBottleType?.complexity || 'simple')}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* 投放摘要 */}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">投放区域:</span>
+                      <span className="text-white font-medium">
+                        {dropLocations.find(loc => loc.id === selectedLocation)?.name}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">消息长度:</span>
+                      <span className="text-white font-medium">{message.length} 字符</span>
+                    </div>
+                    {selectedType === 'TREASURE' && reward && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">奖励金额:</span>
+                        <span className="text-emerald-400 font-bold">{reward} MON</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">预计积分:</span>
+                      <span className="text-emerald-400 font-bold">
+                        +{100 + (bottleTypes.find(bt => bt.id === selectedType)?.complexity === 'expert' ? 200 :
+                                bottleTypes.find(bt => bt.id === selectedType)?.complexity === 'advanced' ? 100 :
+                                bottleTypes.find(bt => bt.id === selectedType)?.complexity === 'medium' ? 50 : 0)} 积分
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 标签和心情预览 */}
+                  {(tags.length > 0 || mood) && (
+                    <div className="p-3 bg-slate-800/30 rounded-xl border border-white/10">
+                      {mood && (
+                        <div className="mb-2 text-sm">
+                          <span className="text-slate-400">情感: </span>
+                          <span className="text-white">{mood}</span>
+                        </div>
+                      )}
+                      {tags.length > 0 && (
+                        <div className="text-sm">
+                          <span className="text-slate-400">标签: </span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {tags.map((tag) => (
+                              <span key={tag} className="px-2 py-1 bg-purple-500/60 text-white text-xs rounded-full">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 投放按钮 */}
+                <div className="mt-6">
+                  <FutureButton
+                    onClick={handleDropBottle}
+                    disabled={isDropping || !message.trim()}
+                    loading={isDropping}
+                    variant="neural"
+                    size="lg"
+                    className={`w-full ${dropAnimation ? 'animate-bounce' : ''}`}
+                    neural
+                    quantum
+                  >
+                    {isDropping ? (
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        <span>量子传输中...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <Zap className="w-5 h-5" />
+                        <span>启动神经传输</span>
+                        <div className="ml-2 text-sm opacity-70">🚀</div>
+                      </div>
+                    )}
+                  </FutureButton>
+
+                  {/* 传输状态指示器 */}
+                  {dropAnimation && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex justify-between text-xs text-slate-300">
+                        <span>传输进度</span>
+                        <span>量子加密中...</span>
+                      </div>
+                      <div className="w-full bg-slate-700 rounded-full h-1.5">
+                        <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full animate-pulse" style={{width: '75%'}}></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </NeuralCard>
+
+              {/* 使用统计 */}
+              <NeuralCard variant="default" glow padding="p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <Settings className="w-6 h-6 text-slate-400" />
+                  <h3 className="text-white text-lg font-bold">统计信息</h3>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">已投放:</span>
+                    <span className="text-white font-medium">{userStats.bottlesDropped} 个</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">当前等级:</span>
+                    <span className="text-purple-400 font-bold">Lv.{userStats.level}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">经验值:</span>
+                    <span className="text-emerald-400 font-medium">{userStats.experience}</span>
+                  </div>
+                </div>
+              </NeuralCard>
+            </div>
+
           </div>
         </div>
       </div>
     );
+  };
+
+  // 探索区域处理函数
+  const handleExploreArea = async (areaName: string) => {
+    if (!walletState.smartAccountAddress) return;
+
+    setLoading(true);
+    try {
+      console.log('🔍 Exploring area:', areaName);
+
+      // 模拟搜索延迟
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // 模拟发现瓶子
+      const foundBottle = Math.random() > 0.3; // 70% 概率发现瓶子
+
+      if (foundBottle) {
+        const bottleTypes = ['MESSAGE', 'TREASURE', 'WISH', 'TIME_CAPSULE'];
+        const randomType = bottleTypes[Math.floor(Math.random() * bottleTypes.length)];
+        const experience = Math.floor(Math.random() * 200) + 50;
+
+        setUserStats(prev => ({
+          ...prev,
+          bottlesFound: prev.bottlesFound + 1,
+          experience: prev.experience + experience,
+          level: Math.floor((prev.experience + experience) / 1000) + 1
+        }));
+
+        // 显示发现瓶子的成功模态框
+        setSuccessModal({
+          isOpen: true,
+          title: '✨ 发现瓶子！',
+          message: `在${areaName}发现了一个${randomType === 'MESSAGE' ? '神经消息瓶' :
+                     randomType === 'TREASURE' ? '量子宝藏瓶' :
+                     randomType === 'WISH' ? '情感共振瓶' : '时空胶囊'}！`,
+          type: 'find',
+          experience: experience,
+          level: Math.floor((userStats.experience + experience) / 1000) + 1
+        });
+
+        // 发送通知
+        notify.success('发现瓶子', `在${areaName}发现了一个漂流瓶！获得 ${experience} 经验值`);
+        console.log(`✨ Found a ${randomType} bottle! +${experience} EXP`);
+      } else {
+        console.log('🌊 No bottles found in this area. Try another location!');
+      }
+
+    } catch (error) {
+      console.error('❌ Exploration failed:', error);
+      setError('Exploration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 主海洋视图 - 未来感重新设计
@@ -950,6 +1471,7 @@ const MessageBottleApp = () => {
                             size="lg"
                             className="group-hover:scale-110"
                             quantum
+                            onClick={() => handleExploreArea(area.name)}
                           >
                             <Search className="w-6 h-6 mr-3" />
                             开始探索
@@ -1093,6 +1615,17 @@ const MessageBottleApp = () => {
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="cosmic-background"></div>
       </div>
+
+      {/* 成功模态框 */}
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        onClose={() => setSuccessModal({ ...successModal, isOpen: false })}
+        title={successModal.title}
+        message={successModal.message}
+        type={successModal.type}
+        experience={successModal.experience}
+        level={successModal.level}
+      />
     </div>
   );
 };

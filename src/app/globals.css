@@ -595,3 +595,64 @@
     font-size: 1.25rem;
   }
 }
+
+/* PC端自定义滚动条样式 */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* PC端桌面优化 */
+@media (min-width: 1024px) {
+  .desktop-hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  }
+
+  .desktop-grid-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  /* 优化PC端的卡片间距 */
+  .pc-card-spacing {
+    margin-bottom: 1.25rem;
+  }
+
+  .pc-card-spacing:last-child {
+    margin-bottom: 0;
+  }
+
+  /* PC端按钮优化 */
+  .pc-button-hover:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 粘性定位优化 */
+  .sticky-enhanced {
+    position: sticky;
+    top: 1rem;
+    z-index: 10;
+  }
+}
