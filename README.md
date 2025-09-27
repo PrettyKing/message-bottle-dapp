@@ -1,16 +1,32 @@
-# 🌊 Message Bottle DApp
+# 🌊 Neural Ocean - 去中心化漂流瓶 DApp
 
-一个运行在Monad区块链上的去中心化漂流瓶应用，使用MetaMask智能账户技术。
+一个基于 Monad 区块链的去中心化漂流瓶应用，采用 MetaMask Smart Accounts 和现代化的 PC 端界面设计。
 
-## 📋 项目状态 - 已完成 ✅
+![Neural Ocean](https://img.shields.io/badge/Status-Ready%20for%20Deployment-brightgreen)
+![Next.js](https://img.shields.io/badge/Next.js-14.x-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
+![Monad](https://img.shields.io/badge/Blockchain-Monad-purple)
 
-### 🎯 核心功能已实现
-- ✅ **完整的智能合约**: MessageBottle.sol 支持4种漂流瓶类型
-- ✅ **MetaMask集成**: 智能账户管理和钱包连接
-- ✅ **React前端应用**: 海洋主题UI，支持投放和发现漂流瓶
-- ✅ **Envio数据索引**: GraphQL查询系统
-- ✅ **Monad测试网配置**: 一键部署脚本
-- ✅ **项目配置**: TypeScript, Tailwind CSS, Next.js
+## ✨ 特性
+
+### 🎯 核心功能
+- **多类型漂流瓶**: 支持消息瓶、宝藏瓶、情感共振瓶、时空胶囊四种类型
+- **智能投放系统**: 多个投放区域选择，实时显示发现率和活跃度
+- **情感标签系统**: 丰富的心情选择和自定义标签功能
+- **等级经验系统**: 基于复杂度的经验奖励机制
+- **实时预览**: 右侧预览面板，实时显示瓶子配置
+
+### 🖥️ PC端优化
+- **双栏布局**: 左侧配置面板 + 右侧预览面板
+- **响应式设计**: 针对 1024px+ 屏幕优化
+- **高效交互**: 减少垂直滚动，提高操作效率
+- **现代界面**: 神经网络主题，未来感十足
+
+### ⛓️ 区块链集成
+- **Monad 区块链**: 高性能 EVM 兼容链
+- **MetaMask Smart Accounts**: 现代化钱包体验
+- **Envio 索引器**: 实时数据同步
+- **IPFS 存储**: 去中心化内容存储
 
 ## 🚀 快速开始
 
